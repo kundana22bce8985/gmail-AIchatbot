@@ -1,15 +1,16 @@
 from pathlib import Path
 from datetime import datetime, timezone
 import math
-import re
 
 from langchain_core.documents import Document
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_text_splitters import (
-    RecursiveCharacterTextSplitter
-)
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+
+# =========================================================
+# PATHS
+# =========================================================
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -20,18 +21,18 @@ VECTOR_DIR = (
 )
 
 
-# --------------------------------------------------
-# Embedding model
-# --------------------------------------------------
+# =========================================================
+# EMBEDDING MODEL
+# =========================================================
 
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
 
-# --------------------------------------------------
-# Text splitter
-# --------------------------------------------------
+# =========================================================
+# TEXT SPLITTER
+# =========================================================
 
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=800,
@@ -39,9 +40,9 @@ text_splitter = RecursiveCharacterTextSplitter(
 )
 
 
-# --------------------------------------------------
-# Create FAISS index
-# --------------------------------------------------
+# =========================================================
+# CREATE / SAVE FAISS INDEX
+# =========================================================
 
 def ingest_emails(emails: list[dict]) -> int:
 
@@ -54,6 +55,14 @@ def ingest_emails(emails: list[dict]) -> int:
             ""
         )
 
+        # Fallback to body
+        if not text:
+
+            text = email.get(
+                "body",
+                ""
+            )
+
         if not text:
             continue
 
@@ -65,12 +74,23 @@ def ingest_emails(emails: list[dict]) -> int:
 
             documents.append(
                 Document(
+
                     page_content=chunk,
 
                     metadata={
+
+                        # Thread ID / message ID
                         "message_id": email.get(
                             "message_id",
                             ""
+                        ),
+
+                        "thread_id": email.get(
+                            "thread_id",
+                            email.get(
+                                "message_id",
+                                ""
+                            )
                         ),
 
                         "subject": email.get(
@@ -91,56 +111,87 @@ def ingest_emails(emails: list[dict]) -> int:
                         "internal_date": email.get(
                             "internal_date",
                             0
+                        ),
+
+                        "message_count": email.get(
+                            "message_count",
+                            1
                         )
                     }
                 )
             )
 
+    # No documents
     if not documents:
         return 0
+
+    # -----------------------------------------------------
+    # Create FAISS index
+    # -----------------------------------------------------
 
     vector_store = FAISS.from_documents(
         documents,
         embeddings
     )
 
+    # -----------------------------------------------------
+    # Create directory
+    # -----------------------------------------------------
+
     VECTOR_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
+    # -----------------------------------------------------
+    # Save index
+    # -----------------------------------------------------
+
     vector_store.save_local(
         str(VECTOR_DIR)
     )
 
+    # Return number of chunks
     return len(documents)
 
 
-# --------------------------------------------------
-# Load FAISS
-# --------------------------------------------------
+# =========================================================
+# LOAD FAISS INDEX
+# =========================================================
 
 def load_vector_store():
 
     if not VECTOR_DIR.exists():
+
         return None
 
-    return FAISS.load_local(
-        str(VECTOR_DIR),
-        embeddings,
-        allow_dangerous_deserialization=True
-    )
+    try:
+
+        return FAISS.load_local(
+            str(VECTOR_DIR),
+            embeddings,
+            allow_dangerous_deserialization=True
+        )
+
+    except Exception as e:
+
+        print(
+            f"Error loading FAISS index: {e}"
+        )
+
+        return None
 
 
-# --------------------------------------------------
-# Detect recent-related queries
-# --------------------------------------------------
+# =========================================================
+# DETECT RECENT-RELATED QUERIES
+# =========================================================
 
 def is_recent_query(query: str) -> bool:
 
     query = query.lower()
 
     recent_words = [
+
         "recent",
         "latest",
         "newest",
@@ -159,15 +210,16 @@ def is_recent_query(query: str) -> bool:
     )
 
 
-# --------------------------------------------------
-# Recency score
-# --------------------------------------------------
+# =========================================================
+# RECENCY SCORE
+# =========================================================
 
 def calculate_recency_score(
     internal_date: int
 ) -> float:
 
     if not internal_date:
+
         return 0.0
 
     try:
@@ -188,8 +240,7 @@ def calculate_recency_score(
             ).total_seconds() / 86400
         )
 
-        # Newer emails get a higher score.
-        # Score approaches 1 for very recent emails.
+        # Newer emails get higher scores
         score = math.exp(
             -age_days / 30
         )
@@ -197,28 +248,63 @@ def calculate_recency_score(
         return score
 
     except Exception:
+
         return 0.0
 
 
-# --------------------------------------------------
-# Search + Recency Re-ranking
-# --------------------------------------------------
+# =========================================================
+# SEARCH EMAILS
+# =========================================================
+#
+# IMPORTANT:
+# k = 10 means return up to 10 UNIQUE emails.
+#
+# One email may have multiple chunks.
+# We rank chunks first, then keep only one result
+# for each email/thread.
+# =========================================================
 
 def search_emails(
     query: str,
-    k: int = 5
+    k: int = 10
 ):
 
     vector_store = load_vector_store()
 
     if vector_store is None:
+
         return []
 
-    # Get more candidates first.
+    # -----------------------------------------------------
+    # Number of candidates
+    # -----------------------------------------------------
+
     candidate_count = max(
         k * 5,
-        25
+        50
     )
+
+    # Prevent requesting more documents than exist
+    try:
+
+        total_documents = vector_store.index.ntotal
+
+        candidate_count = min(
+            candidate_count,
+            total_documents
+        )
+
+    except Exception:
+
+        pass
+
+    if candidate_count <= 0:
+
+        return []
+
+    # -----------------------------------------------------
+    # Semantic search
+    # -----------------------------------------------------
 
     results = (
         vector_store
@@ -228,11 +314,23 @@ def search_emails(
         )
     )
 
-    ranked_results = []
+    if not results:
+
+        return []
+
+    # -----------------------------------------------------
+    # Check whether query is recent-related
+    # -----------------------------------------------------
 
     recent_query = is_recent_query(
         query
     )
+
+    ranked_results = []
+
+    # -----------------------------------------------------
+    # Rank every chunk
+    # -----------------------------------------------------
 
     for document, semantic_score in results:
 
@@ -245,21 +343,24 @@ def search_emails(
             internal_date
         )
 
+        # -------------------------------------------------
+        # Recent queries
+        # -------------------------------------------------
+
         if recent_query:
 
-            # Recent queries:
-            # 70% semantic relevance
-            # 30% recency
             final_score = (
                 0.70 * semantic_score
                 +
                 0.30 * recency_score
             )
 
+        # -------------------------------------------------
+        # Normal queries
+        # -------------------------------------------------
+
         else:
 
-            # Normal queries:
-            # semantic similarity is more important
             final_score = (
                 0.85 * semantic_score
                 +
@@ -273,13 +374,76 @@ def search_emails(
             )
         )
 
+    # -----------------------------------------------------
+    # Sort highest score first
+    # -----------------------------------------------------
+
     ranked_results.sort(
         key=lambda x: x[1],
         reverse=True
     )
 
-    return [
-        document
-        for document, score
-        in ranked_results[:k]
-    ]
+    # =====================================================
+    # REMOVE DUPLICATE EMAILS
+    # =====================================================
+    #
+    # Example:
+    #
+    # Email A → chunk 1
+    # Email A → chunk 2
+    # Email A → chunk 3
+    #
+    # We return Email A only once.
+    # =====================================================
+
+    unique_results = []
+
+    seen_email_ids = set()
+
+    for document, score in ranked_results:
+
+        email_id = document.metadata.get(
+            "thread_id",
+            document.metadata.get(
+                "message_id",
+                ""
+            )
+        )
+
+        # If no ID exists, use a fallback
+        if not email_id:
+
+            email_id = (
+                document.metadata.get(
+                    "subject",
+                    ""
+                )
+                + "|"
+                + document.metadata.get(
+                    "sender",
+                    ""
+                )
+            )
+
+        # Skip duplicate email
+        if email_id in seen_email_ids:
+
+            continue
+
+        seen_email_ids.add(
+            email_id
+        )
+
+        unique_results.append(
+            document
+        )
+
+        # -------------------------------------------------
+        # Stop after k UNIQUE emails
+        # -------------------------------------------------
+
+        if len(unique_results) >= k:
+
+            break
+
+    return unique_results
