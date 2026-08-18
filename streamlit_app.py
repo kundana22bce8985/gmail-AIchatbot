@@ -1,5 +1,59 @@
 import streamlit as st
 
+
+# =========================================================
+# PAGE CONFIG
+# =========================================================
+
+st.set_page_config(
+    page_title="Gmail AI Agent",
+    page_icon="📧",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+
+# =========================================================
+# GOOGLE LOGIN
+# =========================================================
+
+if not st.user.is_logged_in:
+
+    st.markdown(
+        """
+        <div style="
+            text-align:center;
+            margin-top:120px;
+        ">
+            <h1>📧 Gmail AI Agent</h1>
+            <p>
+                Search, understand and chat with your Gmail
+                using AI.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    col1, col2, col3 = st.columns(
+        [1, 2, 1]
+    )
+
+    with col2:
+
+        st.button(
+            "🔐 Login with Google",
+            on_click=st.login,
+            use_container_width=True
+        )
+
+    st.stop()
+
+
+# =========================================================
+# IMPORT SERVICES
+# =========================================================
+
 from app.services.gmail_service import (
     fetch_emails,
     get_email_by_id,
@@ -23,19 +77,7 @@ from app.services.llm_service import (
 
 
 # =========================================================
-# PAGE CONFIG
-# =========================================================
-
-st.set_page_config(
-    page_title="Gmail AI Agent",
-    page_icon="📧",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-
-# =========================================================
-# UI CSS
+# CSS
 # =========================================================
 
 st.markdown(
@@ -44,46 +86,27 @@ st.markdown(
 
     .stApp {
         background-color: #FFFFFF;
-        color: #202124;
     }
 
     section[data-testid="stSidebar"] {
         background-color: #F8F9FA;
-        border-right: 1px solid #E5E7EB;
     }
 
     .app-title {
         color: #1A73E8;
         font-size: 34px;
         font-weight: 700;
-        margin-bottom: 0px;
     }
 
     .app-subtitle {
         color: #5F6368;
         font-size: 15px;
-        margin-top: 4px;
         margin-bottom: 25px;
     }
 
     .stButton > button {
-        width: 100%;
-        background-color: #1A73E8;
-        color: white;
-        border: none;
         border-radius: 8px;
-        height: 42px;
         font-weight: 600;
-    }
-
-    .stButton > button:hover {
-        background-color: #1557B0;
-        color: white;
-    }
-
-    [data-testid="stChatMessage"] {
-        border-radius: 12px;
-        padding: 12px;
     }
 
     </style>
@@ -97,18 +120,27 @@ st.markdown(
 # =========================================================
 
 if "messages" not in st.session_state:
+
     st.session_state.messages = []
 
+
 if "synced" not in st.session_state:
+
     st.session_state.synced = False
 
+
 if "email_count" not in st.session_state:
+
     st.session_state.email_count = 0
 
+
 if "chunk_count" not in st.session_state:
+
     st.session_state.chunk_count = 0
 
+
 if "selected_email" not in st.session_state:
+
     st.session_state.selected_email = None
 
 
@@ -118,24 +150,32 @@ if "selected_email" not in st.session_state:
 
 with st.sidebar:
 
-    st.markdown("## 📧 Gmail AI")
+    st.markdown(
+        "## 📧 Gmail AI"
+    )
 
     st.caption(
-        "Your personal Gmail AI assistant"
+        f"Logged in as "
+        f"{st.user.get('email', '')}"
     )
 
     st.divider()
 
     # -----------------------------------------------------
-    # GMAIL SYNC
+    # SYNC
     # -----------------------------------------------------
 
-    st.markdown("### 📥 Email Database")
+    st.markdown(
+        "### 📥 Email Database"
+    )
 
-    if st.button("🔄 Sync Gmail"):
+    if st.button(
+        "🔄 Sync Gmail",
+        use_container_width=True
+    ):
 
         with st.spinner(
-            "Fetching all Gmail emails..."
+            "Fetching latest 100 emails..."
         ):
 
             emails = fetch_emails(
@@ -171,13 +211,16 @@ with st.sidebar:
             f"Indexed {chunks} chunks"
         )
 
+
     # -----------------------------------------------------
-    # DATABASE STATUS
+    # STATUS
     # -----------------------------------------------------
 
     if st.session_state.synced:
 
-        st.markdown("### 📊 Database")
+        st.markdown(
+            "### 📊 Database"
+        )
 
         st.write(
             f"📧 Emails: "
@@ -189,21 +232,28 @@ with st.sidebar:
             f"**{st.session_state.chunk_count}**"
         )
 
-        st.success("FAISS ready")
+        st.success(
+            "FAISS ready"
+        )
 
     else:
 
         st.warning(
-            "Sync Gmail before searching."
+            "Click Sync Gmail first."
         )
 
+
     st.divider()
+
 
     # -----------------------------------------------------
     # CLEAR CHAT
     # -----------------------------------------------------
 
-    if st.button("🗑️ Clear Chat"):
+    if st.button(
+        "🗑️ Clear Chat",
+        use_container_width=True
+    ):
 
         st.session_state.messages = []
 
@@ -211,11 +261,17 @@ with st.sidebar:
 
         st.rerun()
 
-    st.divider()
 
-    st.caption(
-        "Gmail API • FAISS • RAG • Groq"
-    )
+    # -----------------------------------------------------
+    # LOGOUT
+    # -----------------------------------------------------
+
+    if st.button(
+        "🚪 Logout",
+        use_container_width=True
+    ):
+
+        st.logout()
 
 
 # =========================================================
@@ -236,73 +292,12 @@ st.markdown(
 
 
 # =========================================================
-# CHAT HISTORY
-# =========================================================
-
-for message in st.session_state.messages:
-
-    with st.chat_message(
-        message["role"]
-    ):
-
-        st.markdown(
-            message["content"]
-        )
-
-        # Show sources if available
-
-        if (
-            message["role"] == "assistant"
-            and message.get("sources")
-        ):
-
-            with st.expander(
-                "📚 View email sources"
-            ):
-
-                for i, source in enumerate(
-                    message["sources"],
-                    1
-                ):
-
-                    st.markdown(
-                        f"**Source {i}**"
-                    )
-
-                    st.write(
-                        "**Subject:** "
-                        + source.get(
-                            "subject",
-                            ""
-                        )
-                    )
-
-                    st.write(
-                        "**From:** "
-                        + source.get(
-                            "sender",
-                            ""
-                        )
-                    )
-
-                    st.write(
-                        "**Date:** "
-                        + source.get(
-                            "date",
-                            ""
-                        )
-                    )
-
-                    st.divider()
-
-
-# =========================================================
 # REQUEST DETECTION
 # =========================================================
 
 def is_today_count_request(question):
 
-    q = question.lower().strip()
+    q = question.lower()
 
     patterns = [
         "how many mails did i get today",
@@ -312,19 +307,18 @@ def is_today_count_request(question):
         "number of mails today",
         "number of emails today",
         "emails received today",
-        "mails received today",
-        "how many messages today"
+        "mails received today"
     ]
 
     return any(
-        pattern in q
-        for pattern in patterns
+        x in q
+        for x in patterns
     )
 
 
 def is_full_email_request(question):
 
-    q = question.lower().strip()
+    q = question.lower()
 
     patterns = [
         "give me the full mail",
@@ -336,20 +330,18 @@ def is_full_email_request(question):
         "complete mail",
         "complete email",
         "entire mail",
-        "entire email",
-        "whole mail",
-        "whole email"
+        "entire email"
     ]
 
     return any(
-        pattern in q
-        for pattern in patterns
+        x in q
+        for x in patterns
     )
 
 
 def is_summary_request(question):
 
-    q = question.lower().strip()
+    q = question.lower()
 
     patterns = [
         "summarize this mail",
@@ -363,14 +355,14 @@ def is_summary_request(question):
     ]
 
     return any(
-        pattern in q
-        for pattern in patterns
+        x in q
+        for x in patterns
     )
 
 
-def is_reply_suggestion_request(question):
+def is_reply_request(question):
 
-    q = question.lower().strip()
+    q = question.lower()
 
     patterns = [
         "what should i reply",
@@ -380,18 +372,30 @@ def is_reply_suggestion_request(question):
         "how should i reply",
         "how should i respond",
         "suggest a reply",
-        "suggest reply",
         "give me a reply",
         "write a reply",
-        "draft a reply",
-        "reply to this mail",
-        "reply to this email"
+        "draft a reply"
     ]
 
     return any(
-        pattern in q
-        for pattern in patterns
+        x in q
+        for x in patterns
     )
+
+
+# =========================================================
+# DISPLAY CHAT HISTORY
+# =========================================================
+
+for message in st.session_state.messages:
+
+    with st.chat_message(
+        message["role"]
+    ):
+
+        st.markdown(
+            message["content"]
+        )
 
 
 # =========================================================
@@ -405,9 +409,9 @@ question = st.chat_input(
 
 if question:
 
-    # =====================================================
-    # SAVE USER QUESTION
-    # =====================================================
+    # -----------------------------------------------------
+    # USER MESSAGE
+    # -----------------------------------------------------
 
     st.session_state.messages.append(
         {
@@ -421,25 +425,25 @@ if question:
         st.markdown(question)
 
 
-    # =====================================================
-    # ASSISTANT RESPONSE
-    # =====================================================
+    # -----------------------------------------------------
+    # ASSISTANT
+    # -----------------------------------------------------
 
     with st.chat_message("assistant"):
 
         answer = ""
 
-        sources = []
-
 
         # =================================================
-        # COUNT TODAY'S EMAILS
+        # TODAY COUNT
         # =================================================
 
-        if is_today_count_request(question):
+        if is_today_count_request(
+            question
+        ):
 
             with st.spinner(
-                "📊 Counting today's emails..."
+                "Counting today's emails..."
             ):
 
                 count = count_emails_today()
@@ -452,346 +456,184 @@ if question:
             st.markdown(answer)
 
 
+        # =================================================
+        # CHECK SYNC
+        # =================================================
+
+        elif not st.session_state.synced:
+
+            answer = (
+                "Please click **🔄 Sync Gmail** "
+                "first so I can search your emails."
+            )
+
+            st.warning(answer)
+
+
         else:
 
-            # =================================================
-            # CHECK SYNC
-            # =================================================
+            # =============================================
+            # RAG SEARCH
+            # =============================================
 
-            if not st.session_state.synced:
+            with st.spinner(
+                "🔎 Searching your emails..."
+            ):
 
-                answer = (
-                    "Please click **🔄 Sync Gmail** "
-                    "first."
+                documents = search_emails(
+                    question,
+                    k=5
                 )
 
-                st.warning(answer)
+
+            if not documents:
+
+                answer = (
+                    "I couldn't find a relevant "
+                    "email."
+                )
+
+                st.info(answer)
 
 
             else:
 
-                # =============================================
-                # SEARCH EMAILS
-                # =============================================
+                # =========================================
+                # GET EMAIL
+                # =========================================
 
-                with st.spinner(
-                    "🔎 Searching your emails..."
+                message_id = (
+                    documents[0]
+                    .metadata
+                    .get(
+                        "message_id"
+                    )
+                )
+
+                email = None
+
+                if message_id:
+
+                    try:
+
+                        email = get_email_by_id(
+                            message_id
+                        )
+
+                        st.session_state.selected_email = (
+                            email
+                        )
+
+                    except Exception:
+
+                        email = None
+
+
+                # =========================================
+                # FULL EMAIL
+                # =========================================
+
+                if (
+                    is_full_email_request(question)
+                    and email
                 ):
 
-                    documents = search_emails(
-                        question,
-                        k=5
-                    )
-
-
-                # =============================================
-                # NO RESULTS
-                # =============================================
-
-                if not documents:
-
                     answer = (
-                        "I couldn't find a relevant "
-                        "email."
+                        f"### 📧 "
+                        f"{email['subject']}\n\n"
+                        f"**From:** "
+                        f"{email['sender']}\n\n"
+                        f"**Date:** "
+                        f"{email['date']}\n\n"
+                        f"---\n\n"
+                        f"{email['body']}"
                     )
 
-                    st.info(answer)
+                    st.markdown(answer)
 
+
+                # =========================================
+                # SUMMARY
+                # =========================================
+
+                elif (
+                    is_summary_request(question)
+                    and email
+                ):
+
+                    with st.spinner(
+                        "📝 Creating summary..."
+                    ):
+
+                        answer = summarize_email(
+                            email
+                        )
+
+                    st.markdown(
+                        "### 📝 Email Summary"
+                    )
+
+                    st.markdown(answer)
+
+
+                # =========================================
+                # REPLY SUGGESTION
+                # =========================================
+
+                elif (
+                    is_reply_request(question)
+                    and email
+                ):
+
+                    with st.spinner(
+                        "✍️ Preparing reply suggestion..."
+                    ):
+
+                        answer = (
+                            generate_reply_suggestion(
+                                email
+                            )
+                        )
+
+                    st.markdown(
+                        "### 💬 Suggested Reply"
+                    )
+
+                    st.markdown(answer)
+
+                    st.info(
+                        "This is only a suggestion. "
+                        "Copy it to Gmail and send it "
+                        "yourself."
+                    )
+
+
+                # =========================================
+                # NORMAL RAG QUESTION
+                # =========================================
 
                 else:
 
-                    # =========================================
-                    # GET SELECTED EMAIL
-                    # =========================================
-
-                    message_id = (
-                        documents[0]
-                        .metadata
-                        .get(
-                            "message_id"
-                        )
-                    )
-
-
-                    if message_id:
-
-                        with st.spinner(
-                            "📧 Retrieving email..."
-                        ):
-
-                            selected_email = (
-                                get_email_by_id(
-                                    message_id
-                                )
-                            )
-
-                        st.session_state.selected_email = (
-                            selected_email
-                        )
-
-
-                    # =========================================
-                    # FULL EMAIL
-                    # =========================================
-
-                    if is_full_email_request(
-                        question
+                    with st.spinner(
+                        "🤖 Generating answer..."
                     ):
 
-                        email = (
-                            st.session_state.selected_email
+                        answer = generate_answer(
+                            question,
+                            documents,
+                            st.session_state.messages
                         )
 
-                        answer = (
-                            f"### 📧 "
-                            f"{email['subject']}\n\n"
-                            f"**From:** "
-                            f"{email['sender']}\n\n"
-                            f"**Date:** "
-                            f"{email['date']}\n\n"
-                            f"---\n\n"
-                            f"{email['body']}"
-                        )
-
-                        st.markdown(answer)
-
-
-                        sources = [
-                            {
-                                "message_id":
-                                    email[
-                                        "message_id"
-                                    ],
-
-                                "subject":
-                                    email[
-                                        "subject"
-                                    ],
-
-                                "sender":
-                                    email[
-                                        "sender"
-                                    ],
-
-                                "date":
-                                    email[
-                                        "date"
-                                    ]
-                            }
-                        ]
-
-
-                    # =========================================
-                    # SUMMARY
-                    # =========================================
-
-                    elif is_summary_request(
-                        question
-                    ):
-
-                        email = (
-                            st.session_state.selected_email
-                        )
-
-                        with st.spinner(
-                            "📝 Creating summary..."
-                        ):
-
-                            summary = summarize_email(
-                                email
-                            )
-
-                        answer = (
-                            "### 📝 Email Summary\n\n"
-                            + summary
-                        )
-
-                        st.markdown(answer)
-
-
-                        sources = [
-                            {
-                                "message_id":
-                                    email[
-                                        "message_id"
-                                    ],
-
-                                "subject":
-                                    email[
-                                        "subject"
-                                    ],
-
-                                "sender":
-                                    email[
-                                        "sender"
-                                    ],
-
-                                "date":
-                                    email[
-                                        "date"
-                                    ]
-                            }
-                        ]
-
-
-                    # =========================================
-                    # REPLY SUGGESTION
-                    # =========================================
-
-                    elif is_reply_suggestion_request(
-                        question
-                    ):
-
-                        email = (
-                            st.session_state.selected_email
-                        )
-
-                        with st.spinner(
-                            "✍️ Preparing reply suggestion..."
-                        ):
-
-                            reply = (
-                                generate_reply_suggestion(
-                                    email
-                                )
-                            )
-
-                        answer = (
-                            "### 💬 Suggested Reply\n\n"
-                            + reply
-                        )
-
-                        st.markdown(answer)
-
-                        st.info(
-                            "💡 This is only a suggestion. "
-                            "Copy it to Gmail and send it "
-                            "yourself."
-                        )
-
-
-                        sources = [
-                            {
-                                "message_id":
-                                    email[
-                                        "message_id"
-                                    ],
-
-                                "subject":
-                                    email[
-                                        "subject"
-                                    ],
-
-                                "sender":
-                                    email[
-                                        "sender"
-                                    ],
-
-                                "date":
-                                    email[
-                                        "date"
-                                    ]
-                            }
-                        ]
-
-
-                    # =========================================
-                    # NORMAL RAG QUESTION
-                    # =========================================
-
-                    else:
-
-                        with st.spinner(
-                            "🤖 Generating answer..."
-                        ):
-
-                            answer = generate_answer(
-                                question,
-                                documents,
-                                st.session_state.messages
-                            )
-
-                        st.markdown(answer)
-
-
-                        for document in documents:
-
-                            sources.append(
-                                {
-                                    "message_id":
-                                        document.metadata.get(
-                                            "message_id",
-                                            ""
-                                        ),
-
-                                    "subject":
-                                        document.metadata.get(
-                                            "subject",
-                                            ""
-                                        ),
-
-                                    "sender":
-                                        document.metadata.get(
-                                            "sender",
-                                            ""
-                                        ),
-
-                                    "date":
-                                        document.metadata.get(
-                                            "date",
-                                            ""
-                                        )
-                                }
-                            )
-
-
-                        if sources:
-
-                            with st.expander(
-                                "📚 View email sources"
-                            ):
-
-                                for i, source in enumerate(
-                                    sources,
-                                    1
-                                ):
-
-                                    st.markdown(
-                                        f"**Source {i}**"
-                                    )
-
-                                    st.write(
-                                        "**Subject:** "
-                                        + source[
-                                            "subject"
-                                        ]
-                                    )
-
-                                    st.write(
-                                        "**From:** "
-                                        + source[
-                                            "sender"
-                                        ]
-                                    )
-
-                                    st.write(
-                                        "**Date:** "
-                                        + source[
-                                            "date"
-                                        ]
-                                    )
-
-                                    st.divider()
+                    st.markdown(answer)
 
 
     # =====================================================
-    # SAVE ASSISTANT RESPONSE
+    # SAVE RESPONSE
     # =====================================================
 
     st.session_state.messages.append(
         {
             "role": "assistant",
-            "content": answer,
-            "sources": sources
+            "content": answer
         }
     )
