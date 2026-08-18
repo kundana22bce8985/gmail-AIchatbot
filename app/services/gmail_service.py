@@ -7,6 +7,10 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 
+# =========================================================
+# GMAIL PERMISSION
+# =========================================================
+
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly"
 ]
@@ -36,16 +40,18 @@ def get_gmail_service():
         scopes=SCOPES
     )
 
-    return build(
+    service = build(
         "gmail",
         "v1",
         credentials=credentials,
         cache_discovery=False
     )
 
+    return service
+
 
 # =========================================================
-# DECODE BODY
+# DECODE GMAIL BODY
 # =========================================================
 
 def decode_body(data):
@@ -54,6 +60,7 @@ def decode_body(data):
         return ""
 
     try:
+
         decoded = base64.urlsafe_b64decode(
             data.encode("UTF-8")
         )
@@ -64,18 +71,22 @@ def decode_body(data):
         )
 
     except Exception:
+
         return ""
 
 
 # =========================================================
-# GET HEADER
+# GET EMAIL HEADER
 # =========================================================
 
 def get_header(headers, name):
 
     for header in headers:
 
-        if header.get("name", "").lower() == name.lower():
+        if header.get(
+            "name",
+            ""
+        ).lower() == name.lower():
 
             return header.get(
                 "value",
@@ -86,21 +97,32 @@ def get_header(headers, name):
 
 
 # =========================================================
-# EXTRACT BODY
+# EXTRACT EMAIL BODY
 # =========================================================
 
 def extract_body(payload):
 
     body = ""
 
+    # -----------------------------------------------------
     # Simple email
-    if payload.get("body", {}).get("data"):
+    # -----------------------------------------------------
+
+    if payload.get(
+        "body",
+        {}
+    ).get(
+        "data"
+    ):
 
         body = decode_body(
             payload["body"]["data"]
         )
 
+    # -----------------------------------------------------
     # Multipart email
+    # -----------------------------------------------------
+
     parts = payload.get(
         "parts",
         []
@@ -113,32 +135,40 @@ def extract_body(payload):
             ""
         )
 
+        # Plain text
         if mime_type == "text/plain":
 
             data = (
-                part.get("body", {})
-                .get("data")
+                part.get(
+                    "body",
+                    {}
+                ).get(
+                    "data"
+                )
             )
 
             if data:
 
-                body += "\n" + decode_body(
-                    data
+                body += (
+                    "\n"
+                    + decode_body(data)
                 )
 
+        # Nested multipart
         elif mime_type.startswith(
             "multipart/"
         ):
 
-            body += "\n" + extract_body(
-                part
+            body += (
+                "\n"
+                + extract_body(part)
             )
 
     return body.strip()
 
 
 # =========================================================
-# EXTRACT ONE MESSAGE
+# EXTRACT ONE GMAIL MESSAGE
 # =========================================================
 
 def extract_message(message):
@@ -180,6 +210,7 @@ def extract_message(message):
     )
 
     return {
+
         "message_id": message.get(
             "id",
             ""
@@ -193,12 +224,40 @@ def extract_message(message):
 
         "body": body,
 
+        "text": body,
+
         "internal_date": internal_date
     }
 
 
 # =========================================================
-# GET ONE THREAD
+# GET SINGLE MESSAGE BY ID
+# =========================================================
+# Kept because your existing streamlit_app.py imports it.
+# =========================================================
+
+def get_email_by_id(message_id):
+
+    service = get_gmail_service()
+
+    message = (
+        service.users()
+        .messages()
+        .get(
+            userId="me",
+            id=message_id,
+            format="full"
+        )
+        .execute()
+    )
+
+    return extract_message(
+        message
+    )
+
+
+# =========================================================
+# GET COMPLETE GMAIL THREAD
 # =========================================================
 
 def get_thread_by_id(thread_id):
@@ -222,6 +281,7 @@ def get_thread_by_id(thread_id):
     )
 
     if not messages:
+
         return None
 
     extracted_messages = []
@@ -233,49 +293,70 @@ def get_thread_by_id(thread_id):
         )
 
     # -----------------------------------------------------
-    # Use the latest message as the main metadata
+    # Latest message
     # -----------------------------------------------------
 
     latest = extracted_messages[-1]
 
     # -----------------------------------------------------
-    # Combine complete thread content
+    # Combine all messages in conversation
     # -----------------------------------------------------
 
-    combined_text = []
+    combined_parts = []
 
     for message in extracted_messages:
 
-        combined_text.append(
+        part = (
             f"From: {message['sender']}\n"
             f"Date: {message['date']}\n"
             f"Subject: {message['subject']}\n\n"
             f"{message['body']}"
         )
 
-    full_text = "\n\n--------------------\n\n".join(
-        combined_text
+        combined_parts.append(
+            part
+        )
+
+    full_text = (
+        "\n\n"
+        "--------------------"
+        "\n\n"
+    ).join(
+        combined_parts
     )
 
     return {
-        # Thread ID is used as the unique email/conversation ID
+
+        # IMPORTANT:
+        # Thread ID represents one Gmail conversation.
+
         "message_id": thread_id,
 
         "thread_id": thread_id,
 
-        "subject": latest["subject"],
+        "subject": latest[
+            "subject"
+        ],
 
-        "sender": latest["sender"],
+        "sender": latest[
+            "sender"
+        ],
 
-        "date": latest["date"],
+        "date": latest[
+            "date"
+        ],
 
         "body": full_text,
 
         "text": full_text,
 
-        "internal_date": latest["internal_date"],
+        "internal_date": latest[
+            "internal_date"
+        ],
 
-        # Number of individual messages inside conversation
+        # Number of individual messages
+        # inside this conversation.
+
         "message_count": len(
             extracted_messages
         )
@@ -283,7 +364,15 @@ def get_thread_by_id(thread_id):
 
 
 # =========================================================
-# FETCH LATEST INBOX CONVERSATIONS
+# FETCH GMAIL CONVERSATIONS
+# =========================================================
+# This returns Gmail THREADS, not individual messages.
+#
+# If Gmail shows:
+#
+# 1–6 of 6
+#
+# this function will return approximately 6 threads.
 # =========================================================
 
 def fetch_emails(max_results=100):
@@ -295,16 +384,17 @@ def fetch_emails(max_results=100):
     page_token = None
 
     # -----------------------------------------------------
-    # Get Gmail conversation/thread IDs
+    # Get maximum 100 Inbox conversations
     # -----------------------------------------------------
 
     while len(threads) < max_results:
 
         remaining = (
-            max_results - len(threads)
+            max_results
+            - len(threads)
         )
 
-        request = (
+        result = (
             service.users()
             .threads()
             .list(
@@ -313,7 +403,6 @@ def fetch_emails(max_results=100):
                 # Only Inbox conversations
                 labelIds=["INBOX"],
 
-                # Maximum 100 conversations
                 maxResults=min(
                     100,
                     remaining
@@ -321,9 +410,8 @@ def fetch_emails(max_results=100):
 
                 pageToken=page_token
             )
+            .execute()
         )
-
-        result = request.execute()
 
         batch = result.get(
             "threads",
@@ -331,6 +419,7 @@ def fetch_emails(max_results=100):
         )
 
         if not batch:
+
             break
 
         threads.extend(
@@ -342,6 +431,7 @@ def fetch_emails(max_results=100):
         )
 
         if not page_token:
+
             break
 
     # -----------------------------------------------------
@@ -359,9 +449,11 @@ def fetch_emails(max_results=100):
         )
 
         if not thread_id:
+
             continue
 
         if thread_id in seen_ids:
+
             continue
 
         seen_ids.add(
@@ -373,7 +465,7 @@ def fetch_emails(max_results=100):
         )
 
     # -----------------------------------------------------
-    # Get complete thread contents
+    # Download complete conversations
     # -----------------------------------------------------
 
     emails = []
@@ -381,6 +473,7 @@ def fetch_emails(max_results=100):
     for thread_id in unique_thread_ids:
 
         if len(emails) >= max_results:
+
             break
 
         try:
@@ -398,8 +491,8 @@ def fetch_emails(max_results=100):
         except Exception as e:
 
             print(
-                f"Error reading thread "
-                f"{thread_id}: {e}"
+                f"Error reading Gmail "
+                f"thread {thread_id}: {e}"
             )
 
     return emails
@@ -427,7 +520,7 @@ def count_emails_today():
 
     while True:
 
-        request = (
+        result = (
             service.users()
             .threads()
             .list(
@@ -441,9 +534,8 @@ def count_emails_today():
 
                 pageToken=page_token
             )
+            .execute()
         )
-
-        result = request.execute()
 
         count += len(
             result.get(
@@ -457,6 +549,7 @@ def count_emails_today():
         )
 
         if not page_token:
+
             break
 
     return count
