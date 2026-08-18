@@ -4,9 +4,13 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.core.config import settings
 
 
+# =========================================================
+# GROQ LLM
+# =========================================================
+
 llm = ChatGroq(
     groq_api_key=settings.groq_api_key,
-    model="openai/gpt-oss-20b",
+    model="llama-3.3-70b-versatile",
     temperature=0
 )
 
@@ -95,7 +99,12 @@ Email:
 
     response = llm.invoke(messages)
 
-    return response.content
+    answer = response.content
+
+    if not answer:
+        return "I couldn't generate an answer from the available email information."
+
+    return answer
 
 
 # =========================================================
@@ -135,6 +144,18 @@ Summary:
 """
     )
 
+    body = email.get(
+        "body",
+        ""
+    ).strip()
+
+    if not body:
+
+        return (
+            "I couldn't find the body text "
+            "of this email to summarize it."
+        )
+
     messages = prompt.format_messages(
         subject=email.get(
             "subject",
@@ -148,15 +169,21 @@ Summary:
             "date",
             ""
         ),
-        body=email.get(
-            "body",
-            ""
-        )
+        body=body
     )
 
     response = llm.invoke(messages)
 
-    return response.content
+    answer = response.content
+
+    if not answer:
+
+        return (
+            "I couldn't generate a summary "
+            "for this email."
+        )
+
+    return answer
 
 
 # =========================================================
@@ -167,6 +194,24 @@ def generate_reply_suggestion(
     email,
     instruction=""
 ):
+
+    body = email.get(
+        "body",
+        ""
+    ).strip()
+
+    # -----------------------------------------------------
+    # Check whether email body exists
+    # -----------------------------------------------------
+
+    if not body:
+
+        return (
+            "I couldn't find the body text "
+            "of this email, so I can't draft "
+            "a reply."
+        )
+
 
     prompt = ChatPromptTemplate.from_template(
 """
@@ -183,6 +228,9 @@ Subject:
 From:
 {sender}
 
+Date:
+{date}
+
 Email:
 {body}
 
@@ -193,21 +241,26 @@ Write a natural and professional reply.
 
 Rules:
 
+- Write the reply based only on the email.
 - Do not invent facts.
 - Do not claim that the user completed
-  an action unless the user says so.
+  an action unless the email or user
+  instruction says so.
 - Keep the reply appropriate to the email.
-- If the email is a job/interview email,
+- If the email is a job or interview email,
   use a professional tone.
 - If the email asks for information that
   the user has not provided, politely ask
-  for clarification instead.
-- Return ONLY the suggested reply.
-- Do not include Subject or To.
+  for clarification.
+- Keep the reply concise.
+- Do not include a subject line.
+- Do not include "Suggested Reply:".
+- Return ONLY the email reply.
 
 Suggested reply:
 """
     )
+
 
     messages = prompt.format_messages(
         subject=email.get(
@@ -218,13 +271,33 @@ Suggested reply:
             "sender",
             ""
         ),
-        body=email.get(
-            "body",
+        date=email.get(
+            "date",
             ""
         ),
+        body=body,
         instruction=instruction
     )
 
-    response = llm.invoke(messages)
 
-    return response.content
+    response = llm.invoke(
+        messages
+    )
+
+
+    answer = response.content
+
+
+    # -----------------------------------------------------
+    # Safety check
+    # -----------------------------------------------------
+
+    if not answer:
+
+        return (
+            "I couldn't generate a reply "
+            "for this email."
+        )
+
+
+    return answer.strip()
