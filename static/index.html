@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Gmail AI Agent</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background: #f5f7fb;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: white;
+            padding: 25px 50px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .header h1 {
+            color: #1f2937;
+            font-size: 30px;
+        }
+
+        .header p {
+            color: #6b7280;
+            margin-top: 6px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        .card h2 {
+            color: #1f2937;
+            margin-bottom: 20px;
+        }
+
+        .chat-box {
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            background: #fafafa;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            max-width: 80%;
+            line-height: 1.5;
+        }
+
+        .user {
+            background: #e0e7ff;
+            margin-left: auto;
+        }
+
+        .bot {
+            background: #dcfce7;
+            margin-right: auto;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+
+        #question {
+            flex: 1;
+            padding: 14px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 16px;
+            outline: none;
+        }
+
+        button {
+            padding: 14px 25px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 15px;
+            color: #6b7280;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>📧 Gmail AI Agent</h1>
+        <p>Ask questions about your emails using AI</p>
+    </div>
+
+    <div class="container">
+
+        <div class="card">
+
+            <h2>💬 Chat with your emails</h2>
+
+            <div class="chat-box" id="chatBox">
+
+                <div class="message bot">
+                    Hello! 👋 I can help you search and understand your Gmail.
+                    Ask me something about your emails.
+                </div>
+
+            </div>
+
+            <div class="input-area">
+
+                <input
+                    type="text"
+                    id="question"
+                    placeholder="Ask something about your emails..."
+                    onkeypress="handleEnter(event)"
+                >
+
+                <button id="sendButton" onclick="sendMessage()">
+                    Send
+                </button>
+
+            </div>
+
+            <div class="status" id="status"></div>
+
+        </div>
+
+    </div>
+
+
+    <script>
+
+        function handleEnter(event) {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        }
+
+
+        function addMessage(message, type) {
+
+            const chatBox = document.getElementById("chatBox");
+
+            const div = document.createElement("div");
+
+            div.className = "message " + type;
+
+            div.textContent = message;
+
+            chatBox.appendChild(div);
+
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+
+        async function sendMessage() {
+
+            const input = document.getElementById("question");
+            const button = document.getElementById("sendButton");
+            const status = document.getElementById("status");
+
+            const question = input.value.trim();
+
+            if (!question) {
+                return;
+            }
+
+            addMessage(question, "user");
+
+            input.value = "";
+
+            button.disabled = true;
+
+            status.textContent = "AI is thinking...";
+
+            try {
+
+                const response = await fetch("/api/v1/chat", {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        question: question
+                    })
+
+                });
+
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        "Server returned " + response.status
+                    );
+
+                }
+
+
+                const data = await response.json();
+
+
+                const answer =
+                    data.answer ||
+                    data.response ||
+                    data.message ||
+                    "No answer received.";
+
+
+                addMessage(answer, "bot");
+
+                status.textContent = "Ready";
+
+
+            } catch (error) {
+
+                console.error(error);
+
+                addMessage(
+                    "Sorry, I couldn't connect to the AI service.",
+                    "bot"
+                );
+
+                status.textContent =
+                    "Error connecting to server.";
+
+            } finally {
+
+                button.disabled = false;
+
+                input.focus();
+
+            }
+        }
+
+    </script>
+
+</body>
+</html>
