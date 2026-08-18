@@ -10,9 +10,42 @@ from app.core.config import settings
 
 llm = ChatGroq(
     groq_api_key=settings.groq_api_key,
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-20b",
     temperature=0
 )
+
+
+# =========================================================
+# HELPER
+# =========================================================
+
+def get_response_text(response):
+
+    content = response.content
+
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+
+        text = ""
+
+        for item in content:
+
+            if isinstance(item, dict):
+
+                if item.get("type") == "text":
+                    text += item.get("text", "")
+
+                elif "text" in item:
+                    text += item.get("text", "")
+
+            elif isinstance(item, str):
+                text += item
+
+        return text.strip()
+
+    return str(content).strip()
 
 
 # =========================================================
@@ -30,8 +63,6 @@ Do not invent information.
 
 If the answer is not available,
 say that you could not find it.
-
-Use conversation history for follow-up questions.
 
 Conversation history:
 
@@ -99,10 +130,14 @@ Email:
 
     response = llm.invoke(messages)
 
-    answer = response.content
+    answer = get_response_text(response)
 
     if not answer:
-        return "I couldn't generate an answer from the available email information."
+
+        return (
+            "I couldn't generate an answer "
+            "from the available email information."
+        )
 
     return answer
 
@@ -112,6 +147,15 @@ Email:
 # =========================================================
 
 def summarize_email(email):
+
+    body = email.get("body", "").strip()
+
+    if not body:
+
+        return (
+            "I couldn't find the body text "
+            "of this email to summarize it."
+        )
 
     prompt = ChatPromptTemplate.from_template(
 """
@@ -123,10 +167,10 @@ Include:
 
 1. Main purpose
 2. Important points
-3. Dates/deadlines
+3. Dates or deadlines
 4. Action required from the user
 
-Keep it short and easy to understand.
+Keep the summary short and easy to understand.
 
 Subject:
 {subject}
@@ -140,41 +184,20 @@ Date:
 Email:
 {body}
 
-Summary:
+Return only the summary.
 """
     )
 
-    body = email.get(
-        "body",
-        ""
-    ).strip()
-
-    if not body:
-
-        return (
-            "I couldn't find the body text "
-            "of this email to summarize it."
-        )
-
     messages = prompt.format_messages(
-        subject=email.get(
-            "subject",
-            ""
-        ),
-        sender=email.get(
-            "sender",
-            ""
-        ),
-        date=email.get(
-            "date",
-            ""
-        ),
+        subject=email.get("subject", ""),
+        sender=email.get("sender", ""),
+        date=email.get("date", ""),
         body=body
     )
 
     response = llm.invoke(messages)
 
-    answer = response.content
+    answer = get_response_text(response)
 
     if not answer:
 
@@ -195,21 +218,13 @@ def generate_reply_suggestion(
     instruction=""
 ):
 
-    body = email.get(
-        "body",
-        ""
-    ).strip()
-
-    # -----------------------------------------------------
-    # Check whether email body exists
-    # -----------------------------------------------------
+    body = email.get("body", "").strip()
 
     if not body:
 
         return (
             "I couldn't find the body text "
-            "of this email, so I can't draft "
-            "a reply."
+            "of this email, so I can't draft a reply."
         )
 
 
@@ -217,8 +232,7 @@ def generate_reply_suggestion(
 """
 You are an email assistant.
 
-The user wants to know what they should
-reply to this email.
+The user wants to write a reply to the email below.
 
 Original email:
 
@@ -237,60 +251,41 @@ Email:
 User instruction:
 {instruction}
 
-Write a natural and professional reply.
+Write a natural, short and professional reply.
 
 Rules:
 
-- Write the reply based only on the email.
+- Base the reply only on the email content.
 - Do not invent facts.
-- Do not claim that the user completed
-  an action unless the email or user
-  instruction says so.
-- Keep the reply appropriate to the email.
-- If the email is a job or interview email,
+- Do not say that the user completed
+  something unless it is known.
+- If the email is about a job or interview,
   use a professional tone.
-- If the email asks for information that
+- If the sender asks for information that
   the user has not provided, politely ask
   for clarification.
-- Keep the reply concise.
 - Do not include a subject line.
-- Do not include "Suggested Reply:".
-- Return ONLY the email reply.
+- Do not include "Suggested Reply".
+- Return ONLY the reply text.
 
-Suggested reply:
+Reply:
 """
     )
 
 
     messages = prompt.format_messages(
-        subject=email.get(
-            "subject",
-            ""
-        ),
-        sender=email.get(
-            "sender",
-            ""
-        ),
-        date=email.get(
-            "date",
-            ""
-        ),
+        subject=email.get("subject", ""),
+        sender=email.get("sender", ""),
+        date=email.get("date", ""),
         body=body,
         instruction=instruction
     )
 
 
-    response = llm.invoke(
-        messages
-    )
+    response = llm.invoke(messages)
 
+    answer = get_response_text(response)
 
-    answer = response.content
-
-
-    # -----------------------------------------------------
-    # Safety check
-    # -----------------------------------------------------
 
     if not answer:
 
@@ -300,4 +295,4 @@ Suggested reply:
         )
 
 
-    return answer.strip()
+    return answer
